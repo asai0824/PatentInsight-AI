@@ -13,6 +13,41 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- Authentication Logic ---
+def check_password():
+    """Returns `True` if the user had the correct password."""
+
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # パスワードをセッションから削除
+        else:
+            st.session_state["password_correct"] = False
+
+    # 初回アクセス時または認証未完了時
+    if "password_correct" not in st.session_state:
+        # パスワード入力フォームを表示
+        st.title("🔒 ログイン")
+        st.write("このアプリを使用するにはパスワードが必要です。")
+        st.text_input(
+            "パスワード", type="password", on_change=password_entered, key="password"
+        )
+        return False
+    
+    # パスワードが間違っていた場合
+    elif not st.session_state["password_correct"]:
+        st.title("🔒 ログイン")
+        st.text_input(
+            "パスワード", type="password", on_change=password_entered, key="password"
+        )
+        st.error("パスワードが間違っています。")
+        return False
+    
+    # 認証成功時
+    else:
+        return True
+
 # --- CSS Injection for Report Styling (OneNote Compatibility) ---
 # React版のCSSを移植
 REPORT_CSS = """
@@ -275,14 +310,19 @@ def clean_html(text):
 # --- Main Application ---
 
 def main():
+    # パスワード認証チェック（ここより下は認証通過後のみ実行される）
+    if not check_password():
+        st.stop()
+
     # Sidebar
     st.sidebar.title("🔬 PatentInsight AI")
     st.sidebar.caption("Bulk Report Edition")
     
-    api_key = st.sidebar.text_input("Gemini API Key", type="password")
-    if not api_key:
-        # 環境変数から取得を試みる（ローカル開発用）
-        api_key = os.environ.get("API_KEY")
+    # ユーザー用APIキー入力（認証されたユーザーが入れる）
+    # もしくはSecretsにAPI_KEYも設定してあれば自動で読み込む
+    default_api_key = os.environ.get("API_KEY") or st.secrets.get("API_KEY", "")
+    
+    api_key = st.sidebar.text_input("Gemini API Key", value=default_api_key, type="password")
     
     if not api_key:
         st.sidebar.warning("API Keyを入力してください。")
