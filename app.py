@@ -151,7 +151,7 @@ async def generate_with_retry(client, model, contents, config, retries=5):
     """
     429エラー (Resource Exhausted) を処理するためのリトライラッパー
     """
-    base_delay = 15  # 初期待機時間 (秒)
+    base_delay = 20  # 初期待機時間を延長
     
     for attempt in range(retries):
         try:
@@ -165,7 +165,7 @@ async def generate_with_retry(client, model, contents, config, retries=5):
             # 429エラーを検出
             if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
                 if attempt < retries - 1:
-                    wait_time = base_delay * (2 ** attempt)  # 指数バックオフ: 15s, 30s, 60s...
+                    wait_time = base_delay * (2 ** attempt)  # 指数バックオフ: 20s, 40s...
                     
                     # トースト通知でユーザーに知らせる
                     st.toast(f"⏳ API制限調整中... {wait_time}秒待機して再試行します ({attempt + 1}/{retries})", icon="🐢")
@@ -228,9 +228,10 @@ async def generate_final_report(client, data_frames, focus_keywords, exclude_key
     # 各行を圧縮文字列に変換
     compressed_rows = [compress_patent_row(row) for _, row in data_frames.iterrows()]
     
-    # 429エラー対策: チャンクサイズを大幅に削減
-    # 以前の400は大きすぎてInput Token Limit (250k) に引っかかる
-    CHUNK_SIZE = 30 
+    # 429エラー対策: トークン数制限とリクエスト回数制限のバランス調整
+    # Limit: 20 requests/minute 対策のため、バッチサイズを大きくしてリクエスト回数を減らす。
+    # 100件 * 1500文字(圧縮後) = 150,000文字 ~= 30k-40kトークン。Geminiの1Mコンテキストなら余裕。
+    CHUNK_SIZE = 100 
     
     if total_rows <= CHUNK_SIZE:
         # --- Single Pass Strategy ---
@@ -300,12 +301,16 @@ async def generate_final_report(client, data_frames, focus_keywords, exclude_key
             batch_summaries.append(summary)
             
             # APIレート制限への配慮 (明示的な待機)
+            # リクエスト間隔を5秒あけることで、1分間のリクエスト数を確実に12回以下に抑える
             if i < total_chunks - 1:
-                await asyncio.sleep(2)
+                await asyncio.sleep(5)
 
         combined_summaries = "\n\n".join([f"--- Batch {i+1} Report ---\n{s}" for i, s in enumerate(batch_summaries)])
         
-        yield "最終レポートを統合・執筆中..."
+        yield "最終レポートを統合・執筆中（APIクールダウン中）..."
+        
+        # 最終リクエスト前に長めの休憩を入れてカウンターをリセットさせる
+        await asyncio.sleep(10)
         
         final_prompt = f"""
           あなたは特許分析の専門家です。
