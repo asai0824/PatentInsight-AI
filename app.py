@@ -4,6 +4,7 @@ import pandas as pd
 import os
 import time
 import asyncio
+import re
 from google.genai import types
 from google.genai import Client
 
@@ -144,7 +145,37 @@ def compress_patent_row(row):
             
     return row_string
 
-# --- Logic: Gemini API Interaction ---
+# --- Logic: Gemini API Interaction with Retry ---
+
+async def generate_with_retry(client, model, contents, config, retries=5):
+    """
+    429エラー (Resource Exhausted) を処理するためのリトライラッパー
+    """
+    base_delay = 15  # 初期待機時間 (秒)
+    
+    for attempt in range(retries):
+        try:
+            return await client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config
+            )
+        except Exception as e:
+            error_str = str(e)
+            # 429エラーを検出
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                if attempt < retries - 1:
+                    wait_time = base_delay * (2 ** attempt)  # 指数バックオフ: 15s, 30s, 60s...
+                    
+                    # トースト通知でユーザーに知らせる
+                    st.toast(f"⏳ API制限調整中... {wait_time}秒待機して再試行します ({attempt + 1}/{retries})", icon="🐢")
+                    await asyncio.sleep(wait_time)
+                else:
+                    # リトライ回数上限
+                    raise Exception(f"APIクォータ制限により処理を中断しました。時間をおいて再実行するか、データ量を減らしてください。\n詳細: {error_str}")
+            else:
+                # その他のエラーは即座に発生させる
+                raise e
 
 async def analyze_batch(client, rows_text, focus_keywords, exclude_keywords, batch_index, total_batches):
     """
@@ -175,7 +206,8 @@ async def analyze_batch(client, rows_text, focus_keywords, exclude_keywords, bat
     """
 
     try:
-        response = await client.aio.models.generate_content(
+        response = await generate_with_retry(
+            client=client,
             model='gemini-3-flash-preview',
             contents=prompt,
             config=types.GenerateContentConfig(
@@ -196,7 +228,9 @@ async def generate_final_report(client, data_frames, focus_keywords, exclude_key
     # 各行を圧縮文字列に変換
     compressed_rows = [compress_patent_row(row) for _, row in data_frames.iterrows()]
     
-    CHUNK_SIZE = 400
+    # 429エラー対策: チャンクサイズを大幅に削減
+    # 以前の400は大きすぎてInput Token Limit (250k) に引っかかる
+    CHUNK_SIZE = 30 
     
     if total_rows <= CHUNK_SIZE:
         # --- Single Pass Strategy ---
@@ -239,7 +273,8 @@ async def generate_final_report(client, data_frames, focus_keywords, exclude_key
           {data_string}
         """
 
-        response = await client.aio.models.generate_content(
+        response = await generate_with_retry(
+            client=client,
             model='gemini-3-flash-preview',
             contents=prompt,
             config=types.GenerateContentConfig(
@@ -263,8 +298,10 @@ async def generate_final_report(client, data_frames, focus_keywords, exclude_key
             chunk_text = "\n---\n".join(chunk)
             summary = await analyze_batch(client, chunk_text, focus_keywords, exclude_keywords, i, total_chunks)
             batch_summaries.append(summary)
-            # APIレート制限への簡易的な配慮
-            await asyncio.sleep(1)
+            
+            # APIレート制限への配慮 (明示的な待機)
+            if i < total_chunks - 1:
+                await asyncio.sleep(2)
 
         combined_summaries = "\n\n".join([f"--- Batch {i+1} Report ---\n{s}" for i, s in enumerate(batch_summaries)])
         
@@ -302,7 +339,8 @@ async def generate_final_report(client, data_frames, focus_keywords, exclude_key
           {combined_summaries}
         """
 
-        response = await client.aio.models.generate_content(
+        response = await generate_with_retry(
+            client=client,
             model='gemini-3-flash-preview',
             contents=final_prompt,
             config=types.GenerateContentConfig(
@@ -329,17 +367,41 @@ def main():
     
     # APIキーの取得 (Secrets または 環境変数から)
     # UIには表示せず、バックグラウンドで安全に取得する
-    api_key = os.environ.get("API_KEY")
-    if not api_key and "API_KEY" in st.secrets:
-        api_key = st.secrets["API_KEY"]
+    api_key = None
+    
+    # 複数のキー名を許容する（ユーザーがGOOGLE_API_KEYなどと設定している場合に備えて）
+    possible_keys = ["API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"]
+    
+    # 1. 環境変数をチェック
+    for key in possible_keys:
+        val = os.environ.get(key)
+        if val:
+            api_key = val
+            break
+            
+    # 2. Secretsをチェック
+    if not api_key:
+        for key in possible_keys:
+            if key in st.secrets:
+                api_key = st.secrets[key]
+                break
 
     if not api_key:
         st.sidebar.error("⛔ API Key Missing")
-        st.error("⚠️ APIキーが設定されていません。")
-        st.info(
-            "このアプリを実行するには、Streamlit CloudのSecrets設定に `API_KEY` を追加する必要があります。\n"
-            "セキュリティ上の理由から、画面上でのキー入力機能は無効化されています。"
-        )
+        st.error("⚠️ APIキーが見つかりません。")
+        st.markdown("""
+        **Secretsの設定を確認してください。**
+        
+        1. **コメントアウト**: 行の先頭に `#` が付いていませんか？（`#`を消してください）
+        2. **変数名**: `API_KEY = "..."` という形式になっていますか？
+        3. **保存**: 入力後に「Save」ボタンを押しましたか？
+        
+        **正しい設定例:**
+        ```toml
+        APP_PASSWORD = "password123"
+        API_KEY = "AIzaSy..." 
+        ```
+        """)
         st.stop()
         
     client = Client(api_key=api_key)
