@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import os
@@ -16,6 +17,14 @@ st.set_page_config(
 # --- Authentication Logic ---
 def check_password():
     """Returns `True` if the user had the correct password."""
+
+    # 【追加】Secretsの設定漏れをチェックする安全装置
+    # これがないと、設定ミスの時にいきなりエラー画面になってしまいます
+    if "APP_PASSWORD" not in st.secrets:
+        st.error("⚠️ 設定未完了: アプリのパスワード(APP_PASSWORD)が設定されていません。")
+        st.warning("【解決策】\nStreamlit Cloudの画面右下の「Manage app」 > 「Settings」 > 「Secrets」を開き、以下のように入力してSaveしてください。")
+        st.code('APP_PASSWORD = "password123"', language="toml")
+        return False
 
     def password_entered():
         """Checks whether a password entered by the user is correct."""
@@ -318,14 +327,19 @@ def main():
     st.sidebar.title("🔬 PatentInsight AI")
     st.sidebar.caption("Bulk Report Edition")
     
-    # ユーザー用APIキー入力（認証されたユーザーが入れる）
-    # もしくはSecretsにAPI_KEYも設定してあれば自動で読み込む
-    default_api_key = os.environ.get("API_KEY") or st.secrets.get("API_KEY", "")
-    
-    api_key = st.sidebar.text_input("Gemini API Key", value=default_api_key, type="password")
-    
+    # APIキーの取得 (Secrets または 環境変数から)
+    # UIには表示せず、バックグラウンドで安全に取得する
+    api_key = os.environ.get("API_KEY")
+    if not api_key and "API_KEY" in st.secrets:
+        api_key = st.secrets["API_KEY"]
+
     if not api_key:
-        st.sidebar.warning("API Keyを入力してください。")
+        st.sidebar.error("⛔ API Key Missing")
+        st.error("⚠️ APIキーが設定されていません。")
+        st.info(
+            "このアプリを実行するには、Streamlit CloudのSecrets設定に `API_KEY` を追加する必要があります。\n"
+            "セキュリティ上の理由から、画面上でのキー入力機能は無効化されています。"
+        )
         st.stop()
         
     client = Client(api_key=api_key)
