@@ -220,6 +220,7 @@ def compress_patent_row(row):
 
 # --- Logic: Gemini API Interaction with Key Rotation ---
 
+# ユーザー指定によりGemini 3 Flash Previewに変更
 MODEL_NAME = 'gemini-3-flash-preview'
 
 async def generate_with_retry(client, model, contents, config, retries=3):
@@ -482,7 +483,7 @@ def main():
     st.title("特許調査レポート生成 (Fast Mode)")
     st.markdown(f"""
     Excelデータをアップロードすると、AIが内容を分析してレポートを作成します。
-    **現在のモデル:** `{MODEL_NAME}` (高速・軽量版)
+    **現在のモデル:** `{MODEL_NAME}` (推論能力強化版)
     **並列処理:** 有効 (キー数: {len(clients)})
     """)
 
@@ -519,25 +520,54 @@ def main():
                     st.markdown(full_html, unsafe_allow_html=True)
                     
                     import streamlit.components.v1 as components
-                    # コピーボタンも少しリッチに
+                    
+                    # JS用のコンテンツエスケープ
+                    # バッククォートと${}をエスケープしてテンプレートリテラル破壊を防ぐ
+                    js_content_safe = full_html.replace("`", "\`").replace("${", "\${")
+                    
                     js_code = f"""
-                    <script>
-                    function copyReport() {{
-                        const content = `{html_content.replace('`', '\`').replace('$', '\$')}`;
-                        navigator.clipboard.writeText(content).then(function() {{
-                            alert('レポートをコピーしました。');
-                        }}, function(err) {{
-                            console.error('Copy failed: ', err);
-                        }});
-                    }}
-                    </script>
-                    <div style="text-align: center; margin-top: 30px; margin-bottom: 50px;">
-                        <button onclick="parent.document.execCommand('selectAll'); parent.document.execCommand('copy'); alert('レポートを選択しました。コピーしてください (Ctrl+C / Cmd+C)。');" 
-                        style="background-color: #2563eb; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2); transition: all 0.2s;">
-                        📋 全て選択してコピー (OneNote貼付用)
+                    <div id="copy-status" style="text-align: center; margin: 20px 0 40px 0;">
+                        <button id="copy-btn" style="cursor: pointer; padding: 12px 24px; background-color: #2563eb; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2); transition: all 0.3s ease;">
+                            📋 レポートをコピー (OneNote用)
                         </button>
+                        <p style="font-size: 12px; color: #666; margin-top: 8px;">ボタンを押すと書式付きでクリップボードにコピーされます</p>
                     </div>
+                    <script>
+                        const btn = document.getElementById('copy-btn');
+                        const htmlData = `{js_content_safe}`;
+                        
+                        btn.addEventListener('click', async () => {{
+                            try {{
+                                // HTMLとプレーンテキストの両方をBlobとして作成
+                                const blobHtml = new Blob([htmlData], {{ type: "text/html" }});
+                                const blobText = new Blob([htmlData], {{ type: "text/plain" }});
+                                
+                                // Clipboard APIを使用して書き込み
+                                const data = [new ClipboardItem({{
+                                    "text/html": blobHtml,
+                                    "text/plain": blobText
+                                }})];
+                                
+                                await navigator.clipboard.write(data);
+                                
+                                // 成功時のUI更新
+                                const originalText = btn.textContent;
+                                btn.textContent = '✅ コピーしました！';
+                                btn.style.backgroundColor = '#059669'; // Green
+                                
+                                setTimeout(() => {{
+                                    btn.textContent = originalText;
+                                    btn.style.backgroundColor = '#2563eb'; // Blue
+                                }}, 3000);
+                                
+                            }} catch (err) {{
+                                console.error('Copy failed:', err);
+                                alert('コピーに失敗しました。\\nセキュリティ制限のため、手動で選択してコピーしてください。');
+                            }}
+                        }});
+                    </script>
                     """
+                    # 高さを確保してボタンを表示
                     components.html(js_code, height=120)
 
         except Exception as e:
