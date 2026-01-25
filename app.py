@@ -5,6 +5,7 @@ import os
 import time
 import asyncio
 import re
+import html
 from google.genai import types
 from google.genai import Client
 
@@ -42,125 +43,148 @@ def check_password():
     else:
         return True
 
-# --- CSS Injection (Enhanced Design) ---
+# --- CSS Injection (Professional Document Design) ---
 REPORT_CSS = """
 <style>
-    /* 全体のコンテナデザイン（紙のような見た目） */
+    /* レポート全体のコンテナ（紙のような質感と読みやすい幅） */
     .report-container {
         background-color: #ffffff;
-        color: #1f2937;
-        font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
-        line-height: 1.7;
-        padding: 40px;
-        border-radius: 8px;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-        margin-bottom: 30px;
-        border: 1px solid #e5e7eb;
+        color: #333333;
+        font-family: "Hiragino Kaku Gothic Pro", "Meiryo", "Yu Gothic", "Noto Sans JP", sans-serif;
+        line-height: 1.8;
+        padding: 50px;
+        max-width: 1000px; /* 一行が長くなりすぎないように制限 */
+        margin: 0 auto 40px auto; /* 中央揃え */
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+        border: 1px solid #f0f0f0;
     }
 
-    /* 見出しのデザイン */
+    /* タイトルデザイン */
     .report-container h1 { 
-        font-size: 28px; 
-        font-weight: 700; 
-        color: #111827; 
-        border-bottom: 3px solid #2563eb; 
-        padding-bottom: 15px; 
-        margin-bottom: 30px; 
-        margin-top: 10px; 
+        font-size: 32px; 
+        font-weight: 800; 
+        color: #1a202c; 
+        border-bottom: 4px solid #3b82f6; 
+        padding-bottom: 20px; 
+        margin-bottom: 40px; 
+        letter-spacing: 0.05em;
     }
     
+    /* セクション見出し */
     .report-container h2 { 
-        font-size: 22px; 
+        font-size: 24px; 
         font-weight: 700; 
-        color: #1e40af; 
-        background-color: #f0f9ff; 
-        padding: 12px 16px; 
-        border-left: 6px solid #2563eb; 
-        margin-bottom: 20px; 
-        margin-top: 40px; 
-        border-radius: 0 4px 4px 0;
+        color: #1e3a8a; 
+        background: linear-gradient(to right, #eff6ff, #ffffff);
+        padding: 15px 20px; 
+        border-left: 8px solid #2563eb; 
+        margin-top: 50px; 
+        margin-bottom: 25px; 
+        border-radius: 4px;
     }
     
+    /* 小見出し */
     .report-container h3 { 
-        font-size: 19px; 
+        font-size: 20px; 
         font-weight: 700; 
-        color: #374151; 
-        border-bottom: 1px solid #d1d5db; 
-        padding-bottom: 8px; 
-        margin-bottom: 15px; 
-        margin-top: 25px; 
+        color: #4b5563; 
+        border-bottom: 2px solid #e5e7eb; 
+        padding-bottom: 10px; 
+        margin-top: 35px; 
+        margin-bottom: 20px; 
     }
 
-    /* 本文・リスト */
+    /* 本文テキスト */
     .report-container p { 
-        margin-bottom: 1.2em; 
-        text-align: justify; 
         font-size: 16px;
+        margin-bottom: 1.5em; 
+        text-align: justify; 
+        color: #374151;
     }
     
+    /* リスト */
     .report-container ul, .report-container ol { 
-        margin-bottom: 20px; 
-        padding-left: 20px; 
+        margin-bottom: 25px; 
+        padding-left: 25px; 
+        color: #374151;
     }
     
     .report-container li { 
-        margin-bottom: 8px; 
+        margin-bottom: 10px; 
         font-size: 16px;
     }
 
-    /* 強調表示 */
+    /* 重要キーワードのハイライト */
     .report-container strong { 
-        color: #1d4ed8; 
+        color: #2563eb; 
         font-weight: 700; 
-        background: linear-gradient(transparent 70%, #dbeafe 70%);
+    }
+    
+    /* マーカー風ハイライト（クラス指定用） */
+    .keyword-highlight {
+        background: linear-gradient(transparent 60%, #bfdbfe 60%);
+        font-weight: bold;
+        padding: 0 4px;
     }
 
-    /* テーブルデザイン（重要） */
+    /* テーブルデザイン（可読性重視） */
     .report-container table { 
         width: 100%; 
-        border-collapse: collapse; 
-        margin: 25px 0; 
+        border-collapse: separate; 
+        border-spacing: 0;
+        margin: 30px 0; 
         font-size: 15px; 
-        border: 1px solid #d1d5db;
-        border-radius: 4px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
         overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
     }
     
     .report-container thead tr {
-        background-color: #f1f5f9;
-        border-bottom: 2px solid #cbd5e1;
+        background-color: #f8fafc;
     }
     
     .report-container th { 
-        padding: 12px 15px; 
+        padding: 15px; 
         text-align: left; 
         font-weight: 700; 
-        color: #334155; 
+        color: #1e40af; 
+        border-bottom: 2px solid #cbd5e1;
         white-space: nowrap;
     }
     
     .report-container td { 
-        padding: 12px 15px; 
+        padding: 15px; 
         border-bottom: 1px solid #e2e8f0; 
         vertical-align: top;
-        color: #4b5563;
+        color: #475569;
+        background-color: #fff;
     }
     
-    .report-container tr:nth-child(even) {
-        background-color: #f8fafc;
+    .report-container tr:last-child td {
+        border-bottom: none;
     }
     
-    .report-container tr:hover {
+    .report-container tr:hover td {
         background-color: #f0f9ff;
     }
 
     /* サマリーボックス */
     .summary-box {
         background-color: #fffbeb;
-        border: 1px solid #fcd34d;
-        border-radius: 6px;
-        padding: 20px;
-        margin-bottom: 25px;
+        border-left: 6px solid #f59e0b;
+        padding: 25px;
+        margin-bottom: 30px;
+        border-radius: 4px;
+    }
+    .summary-box h2 {
+        background: none;
+        border: none;
+        padding: 0;
+        margin-top: 0;
+        color: #92400e;
+        margin-bottom: 15px;
     }
 </style>
 """
@@ -196,13 +220,9 @@ def compress_patent_row(row):
 
 # --- Logic: Gemini API Interaction with Key Rotation ---
 
-# 高速化のために軽量モデルを使用
 MODEL_NAME = 'gemini-flash-lite-latest'
 
 async def generate_with_retry(client, model, contents, config, retries=3):
-    """
-    リトライラッパー。Flash Liteは高速なため、バックオフ時間は短めに設定。
-    """
     base_delay = 5 
     for attempt in range(retries):
         try:
@@ -223,9 +243,6 @@ async def generate_with_retry(client, model, contents, config, retries=3):
                 raise e
 
 async def analyze_batch(client, rows_text, focus_keywords, exclude_keywords, batch_index, total_batches):
-    """
-    バッチ分析タスク
-    """
     prompt = f"""
     あなたは特許分析の専門家です。
     大規模な特許調査の一部（Batch {batch_index + 1}/{total_batches}）を担当しています。
@@ -259,16 +276,12 @@ async def analyze_batch(client, rows_text, focus_keywords, exclude_keywords, bat
         return f"Error in batch {batch_index}: {str(e)}"
 
 async def generate_final_report(clients, data_frames, focus_keywords, exclude_keywords):
-    """
-    マルチクライアント・並列処理対応の生成ロジック
-    """
     total_rows = len(data_frames)
     compressed_rows = [compress_patent_row(row) for _, row in data_frames.iterrows()]
     
     CHUNK_SIZE = 60 
     
     if total_rows <= CHUNK_SIZE:
-        # --- Single Pass ---
         status_text = f"全{total_rows}件を一括分析中 (Model: {MODEL_NAME})..."
         yield status_text
         
@@ -284,15 +297,14 @@ async def generate_final_report(clients, data_frames, focus_keywords, exclude_ke
           - **除外対象**: {exclude_keywords or "特になし"}
 
           ### レポート構成（HTML形式）
-          必ず純粋なHTMLタグで出力してください（Markdownの ```html ... ``` は不要です）。
+          **重要**: 出力は純粋なHTMLコードのみを行ってください。Markdownのコードブロック（```html）は含めないでください。
           
           1. **全体総括**: 
              - 全体的な所感、トレンド。
-             - `<div class="summary-box">` タグを使って、要約を囲ってください。
+             - `<div class="summary-box">` タグで囲ってください。
              
           2. **重要特許 (Top Picks)**: 
              - `<table>`タグを使用して整理。
-             - ヘッダーは `<thead>`, ボディは `<tbody>` を使用。
              
           3. **技術カテゴリ別詳細**: トピックごとの解説。
 
@@ -311,7 +323,6 @@ async def generate_final_report(clients, data_frames, focus_keywords, exclude_ke
         yield clean_html(response.text)
         
     else:
-        # --- Map-Reduce Strategy (Parallel) ---
         chunks = []
         for i in range(0, total_rows, CHUNK_SIZE):
             chunks.append(compressed_rows[i : i + CHUNK_SIZE])
@@ -359,11 +370,12 @@ async def generate_final_report(clients, data_frames, focus_keywords, exclude_ke
           - **除外対象**: {exclude_keywords or "特になし"}
 
           ### レポート構成（HTML形式）
-          必ず純粋なHTMLタグで出力してください（Markdownの ```html ... ``` は不要です）。
+          **重要**: 出力は純粋なHTMLコードのみを行ってください。Markdownのコードブロック（```html）は不要です。
+          HTMLエンティティのエスケープ（&lt;など）はせず、そのままのタグ（<など）を出力してください。
 
           1. **全体総括**: 
              - トレンド分析。
-             - `<div class="summary-box">` タグを使って、特に重要な要約を囲ってください。
+             - `<div class="summary-box">` タグで特に重要な要約を囲ってください。
              
           2. **重要特許ピックアップ**: 
              - 必ずHTMLの `<table>`, `<thead>`, `<tbody>`, `<tr>`, `<th>`, `<td>` タグを使用。
@@ -379,28 +391,34 @@ async def generate_final_report(clients, data_frames, focus_keywords, exclude_ke
             model=MODEL_NAME,
             contents=final_prompt,
             config=types.GenerateContentConfig(
-                system_instruction="Output raw HTML only. No markdown fences. Use <table> for lists."
+                system_instruction="Output raw HTML only. Do not escape HTML tags. No markdown fences."
             )
         )
         yield clean_html(response.text)
 
 def clean_html(text):
     if not text: return ""
+    text = str(text)
     
-    # 1. コードブロック (```html ... ``` or ``` ...) を強力に除去
-    # 正規表現: ```(任意の文字)``` の中身を取り出す、もしくは ```自体を消す
+    # 1. HTMLアンエスケープ: モデルが &lt;h1&gt; のように返してきた場合、<h1> に戻す
+    text = html.unescape(text)
     
-    # パターン1: コードブロックの中身を抽出する試み
-    # re.DOTALL は改行を含むすべての文字にマッチさせる
+    # 2. Markdownコードブロックの除去
     code_block_match = re.search(r"```(?:html)?\s*(.*?)\s*```", text, re.DOTALL)
     if code_block_match:
-        cleaned_text = code_block_match.group(1)
+        text = code_block_match.group(1).strip()
     else:
-        # コードブロックがない場合は、そのまま使うが、念のためバッククォートだけは消す
-        cleaned_text = text.replace("```html", "").replace("```", "")
+        # コードブロックがない場合、"Here is the report:" などの前置き文章を除去する試み
+        # 最初の < タグと、最後の > タグの間を抽出する
+        start_tag = text.find("<")
+        end_tag = text.rfind(">")
+        if start_tag != -1 and end_tag != -1 and start_tag < end_tag:
+            text = text[start_tag:end_tag+1]
         
-    # 2. 余分な空白の除去
-    return cleaned_text.strip()
+        # 念のためバッククォート削除
+        text = text.replace("```html", "").replace("```", "")
+        
+    return text.strip()
 
 # --- Main Application ---
 
@@ -411,7 +429,7 @@ def main():
     st.sidebar.title("🔬 PatentInsight AI")
     st.sidebar.caption("Speed & Bulk Edition")
     
-    # --- API Key Loading Logic (Enhanced) ---
+    # --- API Key Loading Logic ---
     raw_api_keys = []
     
     candidate_keys = ["API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"]
@@ -479,11 +497,11 @@ def main():
                 
                 async def run_analysis():
                     final_html = ""
-                    step = 0
+                    # 途中経過はプログレスバーで表現し、テキストによるチラつきを防止
                     async for chunk in generate_final_report(clients, df, focus_keywords, exclude_keywords):
-                        step += 1
                         if len(chunk) < 200:
-                            result_container.info(chunk)
+                            # 進捗メッセージのみ表示
+                            result_container.caption(f"🔄 {chunk}")
                         else:
                             final_html = chunk
                     return final_html
@@ -501,25 +519,26 @@ def main():
                     st.markdown(full_html, unsafe_allow_html=True)
                     
                     import streamlit.components.v1 as components
+                    # コピーボタンも少しリッチに
                     js_code = f"""
                     <script>
                     function copyReport() {{
                         const content = `{html_content.replace('`', '\`').replace('$', '\$')}`;
                         navigator.clipboard.writeText(content).then(function() {{
-                            alert('コピー完了');
+                            alert('レポートをコピーしました。');
                         }}, function(err) {{
                             console.error('Copy failed: ', err);
                         }});
                     }}
                     </script>
-                    <div style="text-align: right; margin-top: 10px;">
-                        <button onclick="parent.document.execCommand('selectAll'); parent.document.execCommand('copy'); alert('レポートを選択しました。Ctrl+C (MacはCmd+C) でコピーしてください。');" 
-                        style="background-color: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        📋 全選択してコピー (OneNote貼付用)
+                    <div style="text-align: center; margin-top: 30px; margin-bottom: 50px;">
+                        <button onclick="parent.document.execCommand('selectAll'); parent.document.execCommand('copy'); alert('レポートを選択しました。コピーしてください (Ctrl+C / Cmd+C)。');" 
+                        style="background-color: #2563eb; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2); transition: all 0.2s;">
+                        📋 全て選択してコピー (OneNote貼付用)
                         </button>
                     </div>
                     """
-                    components.html(js_code, height=100)
+                    components.html(js_code, height=120)
 
         except Exception as e:
             st.error(f"エラーが発生しました: {str(e)}")
