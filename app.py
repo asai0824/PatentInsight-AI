@@ -42,40 +42,126 @@ def check_password():
     else:
         return True
 
-# --- CSS Injection ---
+# --- CSS Injection (Enhanced Design) ---
 REPORT_CSS = """
 <style>
-    .report-content {
-        background-color: white;
-        color: #0f172a;
-        font-family: "Noto Sans JP", "Meiryo", sans-serif;
-        line-height: 1.8;
-        padding: 2rem;
-        border: 1px solid #e2e8f0;
-        border-radius: 0.75rem;
+    /* 全体のコンテナデザイン（紙のような見た目） */
+    .report-container {
+        background-color: #ffffff;
+        color: #1f2937;
+        font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+        line-height: 1.7;
+        padding: 40px;
+        border-radius: 8px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+        margin-bottom: 30px;
+        border: 1px solid #e5e7eb;
     }
-    .report-content h1 { 
-        font-size: 24px; font-weight: bold; color: #1e3a8a; 
-        border-bottom: 2px solid #1e3a8a; padding-bottom: 10px; 
-        margin-bottom: 20px; margin-top: 30px; 
+
+    /* 見出しのデザイン */
+    .report-container h1 { 
+        font-size: 28px; 
+        font-weight: 700; 
+        color: #111827; 
+        border-bottom: 3px solid #2563eb; 
+        padding-bottom: 15px; 
+        margin-bottom: 30px; 
+        margin-top: 10px; 
     }
-    .report-content h2 { 
-        font-size: 20px; font-weight: bold; color: #1e40af; 
-        background-color: #eff6ff; padding: 8px 12px; 
-        border-left: 5px solid #1e40af; margin-bottom: 16px; margin-top: 24px; 
+    
+    .report-container h2 { 
+        font-size: 22px; 
+        font-weight: 700; 
+        color: #1e40af; 
+        background-color: #f0f9ff; 
+        padding: 12px 16px; 
+        border-left: 6px solid #2563eb; 
+        margin-bottom: 20px; 
+        margin-top: 40px; 
+        border-radius: 0 4px 4px 0;
     }
-    .report-content h3 { 
-        font-size: 18px; font-weight: bold; color: #0f172a; 
-        border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; 
-        margin-bottom: 12px; margin-top: 20px; 
+    
+    .report-container h3 { 
+        font-size: 19px; 
+        font-weight: 700; 
+        color: #374151; 
+        border-bottom: 1px solid #d1d5db; 
+        padding-bottom: 8px; 
+        margin-bottom: 15px; 
+        margin-top: 25px; 
     }
-    .report-content p { margin-bottom: 1em; text-align: justify; }
-    .report-content ul { list-style-type: disc; padding-left: 24px; margin-bottom: 16px; }
-    .report-content li { margin-bottom: 8px; }
-    .report-content strong { color: #1d4ed8; font-weight: bold; }
-    .report-content table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 0.9em; }
-    .report-content th { background-color: #f1f5f9; border: 1px solid #cbd5e1; padding: 8px; text-align: left; font-weight: bold; color: #334155; }
-    .report-content td { border: 1px solid #cbd5e1; padding: 8px; vertical-align: top; }
+
+    /* 本文・リスト */
+    .report-container p { 
+        margin-bottom: 1.2em; 
+        text-align: justify; 
+        font-size: 16px;
+    }
+    
+    .report-container ul, .report-container ol { 
+        margin-bottom: 20px; 
+        padding-left: 20px; 
+    }
+    
+    .report-container li { 
+        margin-bottom: 8px; 
+        font-size: 16px;
+    }
+
+    /* 強調表示 */
+    .report-container strong { 
+        color: #1d4ed8; 
+        font-weight: 700; 
+        background: linear-gradient(transparent 70%, #dbeafe 70%);
+    }
+
+    /* テーブルデザイン（重要） */
+    .report-container table { 
+        width: 100%; 
+        border-collapse: collapse; 
+        margin: 25px 0; 
+        font-size: 15px; 
+        border: 1px solid #d1d5db;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    
+    .report-container thead tr {
+        background-color: #f1f5f9;
+        border-bottom: 2px solid #cbd5e1;
+    }
+    
+    .report-container th { 
+        padding: 12px 15px; 
+        text-align: left; 
+        font-weight: 700; 
+        color: #334155; 
+        white-space: nowrap;
+    }
+    
+    .report-container td { 
+        padding: 12px 15px; 
+        border-bottom: 1px solid #e2e8f0; 
+        vertical-align: top;
+        color: #4b5563;
+    }
+    
+    .report-container tr:nth-child(even) {
+        background-color: #f8fafc;
+    }
+    
+    .report-container tr:hover {
+        background-color: #f0f9ff;
+    }
+
+    /* サマリーボックス */
+    .summary-box {
+        background-color: #fffbeb;
+        border: 1px solid #fcd34d;
+        border-radius: 6px;
+        padding: 20px;
+        margin-bottom: 25px;
+    }
 </style>
 """
 
@@ -130,9 +216,6 @@ async def generate_with_retry(client, model, contents, config, retries=3):
             if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
                 if attempt < retries - 1:
                     wait_time = base_delay * (2 ** attempt)
-                    # 並列実行中にトーストが出すぎるとうっとうしいのでprint/logのみ推奨だが、
-                    # ここではユーザーフィードバック用に控えめに表示
-                    # st.toast(f"⏳ リソース調整中... {wait_time}s待機", icon="🐢")
                     await asyncio.sleep(wait_time)
                 else:
                     raise Exception(f"API制限(429)により中断: {error_str}")
@@ -182,8 +265,6 @@ async def generate_final_report(clients, data_frames, focus_keywords, exclude_ke
     total_rows = len(data_frames)
     compressed_rows = [compress_patent_row(row) for _, row in data_frames.iterrows()]
     
-    # Flash Liteはコンテキストウィンドウも十分あるため、
-    # バッチサイズを大きくしてリクエスト数を減らす戦略を維持
     CHUNK_SIZE = 60 
     
     if total_rows <= CHUNK_SIZE:
@@ -192,7 +273,6 @@ async def generate_final_report(clients, data_frames, focus_keywords, exclude_ke
         yield status_text
         
         data_string = "\n---\n".join(compressed_rows)
-        # クライアントリストの先頭を使用
         client = clients[0]
 
         prompt = f"""
@@ -204,8 +284,16 @@ async def generate_final_report(clients, data_frames, focus_keywords, exclude_ke
           - **除外対象**: {exclude_keywords or "特になし"}
 
           ### レポート構成（HTML形式）
-          1. **全体総括**: 全体的な所感、トレンド。
-          2. **重要特許 (Top Picks)**: <table>タグを使用して整理。
+          必ず純粋なHTMLタグで出力してください（Markdownの ```html ... ``` は不要です）。
+          
+          1. **全体総括**: 
+             - 全体的な所感、トレンド。
+             - `<div class="summary-box">` タグを使って、要約を囲ってください。
+             
+          2. **重要特許 (Top Picks)**: 
+             - `<table>`タグを使用して整理。
+             - ヘッダーは `<thead>`, ボディは `<tbody>` を使用。
+             
           3. **技術カテゴリ別詳細**: トピックごとの解説。
 
           ### データ
@@ -217,7 +305,7 @@ async def generate_final_report(clients, data_frames, focus_keywords, exclude_ke
             model=MODEL_NAME,
             contents=prompt,
             config=types.GenerateContentConfig(
-                system_instruction="Output raw HTML. Use <table> for patent lists."
+                system_instruction="Output raw HTML only. Use <table> for patent lists."
             )
         )
         yield clean_html(response.text)
@@ -231,25 +319,19 @@ async def generate_final_report(clients, data_frames, focus_keywords, exclude_ke
         total_chunks = len(chunks)
         yield f"大規模データ分析を開始: 全{total_chunks}バッチを並列処理します..."
         
-        # タスクの作成：キーをローテーションして割り当て
         tasks = []
         for i, chunk in enumerate(chunks):
             client_index = i % len(clients)
             assigned_client = clients[client_index]
             chunk_text = "\n---\n".join(chunk)
             
-            # タスクをリストに追加
             tasks.append(
                 analyze_batch(assigned_client, chunk_text, focus_keywords, exclude_keywords, i, total_chunks)
             )
 
-        # 並列実行と進捗表示
-        # as_completedを使って、終わった順に結果を受け取る
-        batch_summaries = [""] * total_chunks # 順序保持用のプレースホルダ
+        batch_summaries = [""] * total_chunks
         completed_count = 0
         
-        # タスクにインデックス情報を付与して実行し、結果を正しい位置に格納する必要がある
-        # 少し工夫してラップする
         async def run_task_with_index(idx, coro):
             return idx, await coro
 
@@ -265,7 +347,6 @@ async def generate_final_report(clients, data_frames, focus_keywords, exclude_ke
         
         yield "全バッチ完了。最終レポートを生成中..."
         
-        # 最終まとめは、一番休ませた（またはランダムな）クライアントを使用
         final_client = clients[0] 
         
         final_prompt = f"""
@@ -278,9 +359,16 @@ async def generate_final_report(clients, data_frames, focus_keywords, exclude_ke
           - **除外対象**: {exclude_keywords or "特になし"}
 
           ### レポート構成（HTML形式）
-          1. **全体総括**: 全体的なトレンド、注目の出願人など。
-          2. **重要特許ピックアップ**: 中間レポートから特に重要なものを厳選。**必ずHTMLの <table> タグを使用**。
-          3. **技術カテゴリ別詳解**: トピックごとの解説。
+          必ず純粋なHTMLタグで出力してください（Markdownの ```html ... ``` は不要です）。
+
+          1. **全体総括**: 
+             - トレンド分析。
+             - `<div class="summary-box">` タグを使って、特に重要な要約を囲ってください。
+             
+          2. **重要特許ピックアップ**: 
+             - 必ずHTMLの `<table>`, `<thead>`, `<tbody>`, `<tr>`, `<th>`, `<td>` タグを使用。
+             
+          3. **技術カテゴリ別詳解**: 解説。
 
           ### 中間レポート集合
           {combined_summaries}
@@ -291,14 +379,28 @@ async def generate_final_report(clients, data_frames, focus_keywords, exclude_ke
             model=MODEL_NAME,
             contents=final_prompt,
             config=types.GenerateContentConfig(
-                system_instruction="Output raw HTML. Use <table> for lists."
+                system_instruction="Output raw HTML only. No markdown fences. Use <table> for lists."
             )
         )
         yield clean_html(response.text)
 
 def clean_html(text):
     if not text: return ""
-    return text.replace("```html", "").replace("```", "")
+    
+    # 1. コードブロック (```html ... ``` or ``` ...) を強力に除去
+    # 正規表現: ```(任意の文字)``` の中身を取り出す、もしくは ```自体を消す
+    
+    # パターン1: コードブロックの中身を抽出する試み
+    # re.DOTALL は改行を含むすべての文字にマッチさせる
+    code_block_match = re.search(r"```(?:html)?\s*(.*?)\s*```", text, re.DOTALL)
+    if code_block_match:
+        cleaned_text = code_block_match.group(1)
+    else:
+        # コードブロックがない場合は、そのまま使うが、念のためバッククォートだけは消す
+        cleaned_text = text.replace("```html", "").replace("```", "")
+        
+    # 2. 余分な空白の除去
+    return cleaned_text.strip()
 
 # --- Main Application ---
 
@@ -312,7 +414,6 @@ def main():
     # --- API Key Loading Logic (Enhanced) ---
     raw_api_keys = []
     
-    # 1. 探索: 環境変数から取得
     candidate_keys = ["API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"]
     for i in range(1, 11):
         candidate_keys.append(f"API_KEY_{i}")
@@ -322,60 +423,37 @@ def main():
         val = os.environ.get(key_name)
         if val: raw_api_keys.append(val)
 
-    # 2. 探索: Streamlit Secretsから賢く取得
-    # "API_KEYS" というリストがある場合
     if "API_KEYS" in st.secrets:
         val = st.secrets["API_KEYS"]
         if isinstance(val, list):
             raw_api_keys.extend(val)
     
-    # 3. 探索: 全シークレットをスキャンして、値が "AIza" で始まるものをすべて拾う
-    # これにより、ユーザーがどんな変数名(例: MY_KEY_1)にしていても認識される
     try:
         for key, val in st.secrets.items():
-            # 値が文字列で、AIza(Google API Keyの接頭辞)で始まる場合
             if isinstance(val, str) and val.strip().startswith("AIza"):
                 raw_api_keys.append(val)
-            # 値がリストの場合も中身をチェック
             elif isinstance(val, list):
                 for v in val:
                     if isinstance(v, str) and v.strip().startswith("AIza"):
                         raw_api_keys.append(v)
     except Exception:
-        pass # secretsアクセスでエラーが出ても無視
+        pass
 
-    # 重複排除とクリーニング
     valid_api_keys = []
     seen = set()
     for k in raw_api_keys:
         k_clean = k.strip()
-        # プレースホルダーのテキストが入っている場合は除外
         if k_clean and k_clean not in seen and k_clean.startswith("AIza") and "ここに" not in k_clean:
             seen.add(k_clean)
             valid_api_keys.append(k_clean)
     
-    # --- Debug Information ---
     if not valid_api_keys:
         st.sidebar.error("⛔ API Key Missing")
         st.error("⚠️ APIキーが見つかりません。")
-        
-        # デバッグ用: どんなキー名が見えているかヒントを表示
-        st.info("💡 ヒント: 現在設定されているSecretsのキー名（値は隠しています）")
-        try:
-            secret_keys_found = list(st.secrets.keys())
-            if secret_keys_found:
-                st.code(str(secret_keys_found))
-                st.markdown("APIキーの値は通常 `AIza` で始まります。正しくコピーされているか確認してください。")
-            else:
-                st.warning("Secretsが空です。Streamlit Cloudの設定画面を確認してください。")
-        except:
-            st.warning("Secretsにアクセスできません。")
-            
         st.stop()
     
     st.sidebar.success(f"🔑 {len(valid_api_keys)}個のAPIキーを認識")
     
-    # Create clients for all keys
     clients = [Client(api_key=k) for k in valid_api_keys]
 
     st.sidebar.markdown("---")
@@ -402,7 +480,6 @@ def main():
                 async def run_analysis():
                     final_html = ""
                     step = 0
-                    # 複数のクライアントを渡して実行
                     async for chunk in generate_final_report(clients, df, focus_keywords, exclude_keywords):
                         step += 1
                         if len(chunk) < 200:
@@ -418,7 +495,9 @@ def main():
                 
                 if html_content:
                     st.markdown("### 生成レポート")
-                    full_html = f"{REPORT_CSS}<div class='report-content'>{html_content}</div>"
+                    
+                    # HTMLの注入（デザインクラスを適用したDivで囲む）
+                    full_html = f"{REPORT_CSS}<div class='report-container'>{html_content}</div>"
                     st.markdown(full_html, unsafe_allow_html=True)
                     
                     import streamlit.components.v1 as components
@@ -434,9 +513,9 @@ def main():
                     }}
                     </script>
                     <div style="text-align: right; margin-top: 10px;">
-                        <button onclick="parent.document.execCommand('selectAll'); parent.document.execCommand('copy'); alert('レポートをコピーしました。OneNoteに貼り付けてください。');" 
-                        style="background-color: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold;">
-                        📋 レポートを選択してコピー
+                        <button onclick="parent.document.execCommand('selectAll'); parent.document.execCommand('copy'); alert('レポートを選択しました。Ctrl+C (MacはCmd+C) でコピーしてください。');" 
+                        style="background-color: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        📋 全選択してコピー (OneNote貼付用)
                         </button>
                     </div>
                     """
