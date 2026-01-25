@@ -220,7 +220,7 @@ def compress_patent_row(row):
 
 # --- Logic: Gemini API Interaction with Key Rotation ---
 
-MODEL_NAME = 'gemini-2.5-flash-lite'
+MODEL_NAME = 'gemini-3-flash-preview'
 
 async def generate_with_retry(client, model, contents, config, retries=3):
     base_delay = 5 
