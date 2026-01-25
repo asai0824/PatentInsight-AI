@@ -18,48 +18,31 @@ st.set_page_config(
 # --- Authentication Logic ---
 def check_password():
     """Returns `True` if the user had the correct password."""
-
-    # 【追加】Secretsの設定漏れをチェックする安全装置
-    # これがないと、設定ミスの時にいきなりエラー画面になってしまいます
     if "APP_PASSWORD" not in st.secrets:
         st.error("⚠️ 設定未完了: アプリのパスワード(APP_PASSWORD)が設定されていません。")
-        st.warning("【解決策】\nStreamlit Cloudの画面右下の「Manage app」 > 「Settings」 > 「Secrets」を開き、以下のように入力してSaveしてください。")
-        st.code('APP_PASSWORD = "password123"', language="toml")
         return False
 
     def password_entered():
-        """Checks whether a password entered by the user is correct."""
         if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # パスワードをセッションから削除
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
-    # 初回アクセス時または認証未完了時
     if "password_correct" not in st.session_state:
-        # パスワード入力フォームを表示
         st.title("🔒 ログイン")
         st.write("このアプリを使用するにはパスワードが必要です。")
-        st.text_input(
-            "パスワード", type="password", on_change=password_entered, key="password"
-        )
+        st.text_input("パスワード", type="password", on_change=password_entered, key="password")
         return False
-    
-    # パスワードが間違っていた場合
     elif not st.session_state["password_correct"]:
         st.title("🔒 ログイン")
-        st.text_input(
-            "パスワード", type="password", on_change=password_entered, key="password"
-        )
+        st.text_input("パスワード", type="password", on_change=password_entered, key="password")
         st.error("パスワードが間違っています。")
         return False
-    
-    # 認証成功時
     else:
         return True
 
-# --- CSS Injection for Report Styling (OneNote Compatibility) ---
-# React版のCSSを移植
+# --- CSS Injection ---
 REPORT_CSS = """
 <style>
     .report-content {
@@ -96,63 +79,45 @@ REPORT_CSS = """
 </style>
 """
 
-# --- Logic: Data Compression & Helper Functions ---
+# --- Logic: Data Compression ---
 
 def truncate_text(text, max_length):
-    if pd.isna(text) or text == "":
-        return ""
+    if pd.isna(text) or text == "": return ""
     s = str(text)
-    if len(s) <= max_length:
-        return s
-    return s[:max_length] + "..."
+    return s if len(s) <= max_length else s[:max_length] + "..."
 
 def compress_patent_row(row):
-    """
-    1行の特許データを圧縮文字列に変換する。
-    重要なカラム（発明、要約、請求項など）を優先して含め、トークン数を節約する。
-    """
     priority_keys = ['title', 'invention', 'abstract', 'claim', 'applicant', 'number', 'publication', 'id', '発明', '名称', '要約', '請求', '出願人', '番号']
-    
-    # Seriesを辞書に変換
     row_dict = row.to_dict()
-    
-    # 優先キーに基づいてソートするためのスコア付け
     sorted_items = []
     for k, v in row_dict.items():
-        if pd.isna(v) or v == "":
-            continue
-        
+        if pd.isna(v) or v == "": continue
         k_str = str(k).lower()
         is_priority = any(pk in k_str for pk in priority_keys)
         score = 0 if is_priority else 1
         sorted_items.append((score, k, v))
-    
-    # ソート（優先キーが先）
     sorted_items.sort(key=lambda x: x[0])
     
     row_string = ""
     for _, k, v in sorted_items:
-        # 厳格な切り詰め: キー30文字、値300文字
         k_trunc = truncate_text(k, 30)
         v_trunc = truncate_text(v, 300)
-        
         row_string += f"{k_trunc}: {v_trunc} | "
-        
-        # 1行あたりのハードリミット (トークン節約の要)
         if len(row_string) > 1500:
             row_string += "[TRUNCATED]"
             break
-            
     return row_string
 
-# --- Logic: Gemini API Interaction with Retry ---
+# --- Logic: Gemini API Interaction with Key Rotation ---
 
-async def generate_with_retry(client, model, contents, config, retries=5):
+# 高速化のために軽量モデルを使用
+MODEL_NAME = 'gemini-flash-lite-latest'
+
+async def generate_with_retry(client, model, contents, config, retries=3):
     """
-    429エラー (Resource Exhausted) を処理するためのリトライラッパー
+    リトライラッパー。Flash Liteは高速なため、バックオフ時間は短めに設定。
     """
-    base_delay = 20  # 初期待機時間を延長
-    
+    base_delay = 5 
     for attempt in range(retries):
         try:
             return await client.aio.models.generate_content(
@@ -162,53 +127,45 @@ async def generate_with_retry(client, model, contents, config, retries=5):
             )
         except Exception as e:
             error_str = str(e)
-            # 429エラーを検出
             if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
                 if attempt < retries - 1:
-                    wait_time = base_delay * (2 ** attempt)  # 指数バックオフ: 20s, 40s...
-                    
-                    # トースト通知でユーザーに知らせる
-                    st.toast(f"⏳ API制限調整中... {wait_time}秒待機して再試行します ({attempt + 1}/{retries})", icon="🐢")
+                    wait_time = base_delay * (2 ** attempt)
+                    # 並列実行中にトーストが出すぎるとうっとうしいのでprint/logのみ推奨だが、
+                    # ここではユーザーフィードバック用に控えめに表示
+                    # st.toast(f"⏳ リソース調整中... {wait_time}s待機", icon="🐢")
                     await asyncio.sleep(wait_time)
                 else:
-                    # リトライ回数上限
-                    raise Exception(f"APIクォータ制限により処理を中断しました。時間をおいて再実行するか、データ量を減らしてください。\n詳細: {error_str}")
+                    raise Exception(f"API制限(429)により中断: {error_str}")
             else:
-                # その他のエラーは即座に発生させる
                 raise e
 
 async def analyze_batch(client, rows_text, focus_keywords, exclude_keywords, batch_index, total_batches):
     """
-    データのバッチ（塊）を分析して中間レポートを作成する
+    バッチ分析タスク
     """
     prompt = f"""
     あなたは特許分析の専門家です。
     大規模な特許調査の一部（Batch {batch_index + 1}/{total_batches}）を担当しています。
-    
-    以下の特許データを分析し、**中間分析レポート**を作成してください。
-    このレポートは後で他のバッチの結果と統合されるため、具体的な事実と重要な特許の抽出に焦点を当ててください。
+    以下の特許データを分析し、中間分析レポートを作成してください。
 
     ### ユーザーの着目点
-    {focus_keywords or "特になし（全体的なトレンド）"}
+    {focus_keywords or "特になし"}
 
-    ### 除外条件（この条件に合うものは無視してください）
+    ### 除外条件
     {exclude_keywords or "特になし"}
 
-    ### 出力すべき内容 (プレーンテキストで箇条書き)
-    1. **主な技術クラスター**: このバッチ内で見られた主な技術トピック（例：正極材、製造装置など）。
-    2. **重要特許候補**: 着目点に合致する、または新規性が高いと思われる特許（公報番号、出願人、理由）。
-    3. **出願人トレンド**: このバッチ内で目立つ出願人。
-    
-    ※ 除外・ノイズに関する報告は不要です。重要な情報のみを抽出してください。
+    ### 出力内容
+    1. **技術クラスター**: このバッチ内の主な技術トピック。
+    2. **重要特許**: 注目すべき特許の抽出（公報番号、出願人、理由）。
+    3. **出願人**: 目立つ出願人。
 
     ### データ
     {rows_text}
     """
-
     try:
         response = await generate_with_retry(
             client=client,
-            model='gemini-3-flash-preview',
+            model=MODEL_NAME,
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction="Analyze the patent batch objectively."
@@ -218,57 +175,38 @@ async def analyze_batch(client, rows_text, focus_keywords, exclude_keywords, bat
     except Exception as e:
         return f"Error in batch {batch_index}: {str(e)}"
 
-async def generate_final_report(client, data_frames, focus_keywords, exclude_keywords):
+async def generate_final_report(clients, data_frames, focus_keywords, exclude_keywords):
     """
-    メインの生成ロジック。
-    データ量に応じてシングルパスかMap-Reduceかを選択する。
+    マルチクライアント・並列処理対応の生成ロジック
     """
     total_rows = len(data_frames)
-    
-    # 各行を圧縮文字列に変換
     compressed_rows = [compress_patent_row(row) for _, row in data_frames.iterrows()]
     
-    # 429エラー対策: トークン数制限とリクエスト回数制限のバランス調整
-    # Limit: 20 requests/minute 対策のため、バッチサイズを大きくしてリクエスト回数を減らす。
-    # 100件 * 1500文字(圧縮後) = 150,000文字 ~= 30k-40kトークン。Geminiの1Mコンテキストなら余裕。
-    CHUNK_SIZE = 100 
+    # Flash Liteはコンテキストウィンドウも十分あるため、
+    # バッチサイズを大きくしてリクエスト数を減らす戦略を維持
+    CHUNK_SIZE = 60 
     
     if total_rows <= CHUNK_SIZE:
-        # --- Single Pass Strategy ---
-        status_text = f"全{total_rows}件を一括分析中..."
+        # --- Single Pass ---
+        status_text = f"全{total_rows}件を一括分析中 (Model: {MODEL_NAME})..."
         yield status_text
         
         data_string = "\n---\n".join(compressed_rows)
-        
+        # クライアントリストの先頭を使用
+        client = clients[0]
+
         prompt = f"""
-          あなたは熟練した特許弁理士であり、かつ材料科学のトップエキスパートです。
-          提供された特許リストを元に、研究開発者が短時間で技術動向を把握できる「特許調査レポート」を作成してください。
-
-          ### 目的
-          ノイズを除去し、重要な技術トレンド、競合の動き、および注目すべき特許を抽出すること。
-          A4用紙 2〜10枚程度（日本語4,000〜15,000文字程度）の分量にまとめてください。
-
+          あなたは熟練した特許弁理士です。
+          提供された特許リストを元に「特許調査レポート」を作成してください。
+          
           ### ユーザー指定の条件
           - **着目キーワード**: {focus_keywords or "全体的な技術トレンド"}
           - **除外対象**: {exclude_keywords or "特になし"}
-          ※ 除外対象やノイズと思われる特許については、レポートに含めないでください。
 
-          ### レポート構成（HTML形式のみ出力）
-          <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>, <table> タグを使用。
-          
-          1. **全体総括コメント**: 
-             - Excelシート全体を通した所感を記述してください。
-             - どのような特許が多かったか？
-             - 最近の出願傾向や技術トレンドは？
-             - 特徴的な特許を重点的に出している出願人の動きなど。
-          
-          2. **重要特許ピックアップ (Top Picks)**: 
-             - 特に重要と思われる特許を5〜10件厳選。
-             - **必ずHTMLの <table> タグを使用**して、公報番号、出願人、発明名称、技術的特徴を整理して表示してください。Markdownの表は使用禁止です。
-
-          3. **技術カテゴリ別詳解**: 
-             - トピックごとのグルーピング解説。
-             - 「どの企業がどんな課題解決に取り組んでいるか」を記述。
+          ### レポート構成（HTML形式）
+          1. **全体総括**: 全体的な所感、トレンド。
+          2. **重要特許 (Top Picks)**: <table>タグを使用して整理。
+          3. **技術カテゴリ別詳細**: トピックごとの解説。
 
           ### データ
           {data_string}
@@ -276,83 +214,86 @@ async def generate_final_report(client, data_frames, focus_keywords, exclude_key
 
         response = await generate_with_retry(
             client=client,
-            model='gemini-3-flash-preview',
+            model=MODEL_NAME,
             contents=prompt,
             config=types.GenerateContentConfig(
-                system_instruction="You are a professional patent analyst. Output raw HTML. Do not use Markdown for tables."
+                system_instruction="Output raw HTML. Use <table> for patent lists."
             )
         )
-        
         yield clean_html(response.text)
         
     else:
-        # --- Map-Reduce Strategy ---
+        # --- Map-Reduce Strategy (Parallel) ---
         chunks = []
         for i in range(0, total_rows, CHUNK_SIZE):
             chunks.append(compressed_rows[i : i + CHUNK_SIZE])
         
         total_chunks = len(chunks)
-        batch_summaries = []
+        yield f"大規模データ分析を開始: 全{total_chunks}バッチを並列処理します..."
         
+        # タスクの作成：キーをローテーションして割り当て
+        tasks = []
         for i, chunk in enumerate(chunks):
-            yield f"大規模データ分析中: パート {i+1}/{total_chunks} を処理しています..."
+            client_index = i % len(clients)
+            assigned_client = clients[client_index]
             chunk_text = "\n---\n".join(chunk)
-            summary = await analyze_batch(client, chunk_text, focus_keywords, exclude_keywords, i, total_chunks)
-            batch_summaries.append(summary)
             
-            # APIレート制限への配慮 (明示的な待機)
-            # リクエスト間隔を5秒あけることで、1分間のリクエスト数を確実に12回以下に抑える
-            if i < total_chunks - 1:
-                await asyncio.sleep(5)
+            # タスクをリストに追加
+            tasks.append(
+                analyze_batch(assigned_client, chunk_text, focus_keywords, exclude_keywords, i, total_chunks)
+            )
+
+        # 並列実行と進捗表示
+        # as_completedを使って、終わった順に結果を受け取る
+        batch_summaries = [""] * total_chunks # 順序保持用のプレースホルダ
+        completed_count = 0
+        
+        # タスクにインデックス情報を付与して実行し、結果を正しい位置に格納する必要がある
+        # 少し工夫してラップする
+        async def run_task_with_index(idx, coro):
+            return idx, await coro
+
+        wrapped_tasks = [run_task_with_index(i, t) for i, t in enumerate(tasks)]
+        
+        for future in asyncio.as_completed(wrapped_tasks):
+            idx, result = await future
+            batch_summaries[idx] = result
+            completed_count += 1
+            yield f"進捗: {completed_count}/{total_chunks} バッチ完了..."
 
         combined_summaries = "\n\n".join([f"--- Batch {i+1} Report ---\n{s}" for i, s in enumerate(batch_summaries)])
         
-        yield "最終レポートを統合・執筆中（APIクールダウン中）..."
+        yield "全バッチ完了。最終レポートを生成中..."
         
-        # 最終リクエスト前に長めの休憩を入れてカウンターをリセットさせる
-        await asyncio.sleep(10)
+        # 最終まとめは、一番休ませた（またはランダムな）クライアントを使用
+        final_client = clients[0] 
         
         final_prompt = f"""
           あなたは特許分析の専門家です。
-          大規模な特許データセットを複数のバッチに分けて分析しました。
-          以下は、各バッチからの「中間分析レポート」の集合です。
-
+          以下は、大規模データを分割分析した「中間レポート」の集合です。
           これらを統合し、最終的な「特許調査レポート」を作成してください。
-          情報の重複を整理し、全体としての傾向を導き出してください。
 
           ### ユーザー指定の条件
           - **着目キーワード**: {focus_keywords or "全体的な技術トレンド"}
           - **除外対象**: {exclude_keywords or "特になし"}
 
-          ### レポート構成（HTML形式のみ出力）
-          <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>, <table> タグを使用。
-          
-          1. **全体総括コメント**: 
-             - 全バッチを統合した上での、データ全体を通した所感。
-             - どのような特許が多かったか、最近の出願傾向、注目の出願人など。
-          
-          2. **重要特許ピックアップ (Top Picks)**: 
-             - 中間レポートで挙げられた候補から特に重要なものを5〜10件厳選。
-             - **必ずHTMLの <table> タグを使用**して、公報番号、出願人、発明名称、技術的特徴を整理して表示してください。Markdownの表は使用禁止です。
-
-          3. **技術カテゴリ別詳解**: 
-             - トピックごとのグルーピング解説。
-
-          ※ ノイズや除外された特許に関するコメントは不要です。
+          ### レポート構成（HTML形式）
+          1. **全体総括**: 全体的なトレンド、注目の出願人など。
+          2. **重要特許ピックアップ**: 中間レポートから特に重要なものを厳選。**必ずHTMLの <table> タグを使用**。
+          3. **技術カテゴリ別詳解**: トピックごとの解説。
 
           ### 中間レポート集合
           {combined_summaries}
         """
 
         response = await generate_with_retry(
-            client=client,
-            model='gemini-3-flash-preview',
+            client=final_client,
+            model=MODEL_NAME,
             contents=final_prompt,
             config=types.GenerateContentConfig(
-                system_instruction="You are a professional patent analyst. Output raw HTML. Do not use Markdown for tables."
+                system_instruction="Output raw HTML. Use <table> for lists."
             )
         )
-        
         yield clean_html(response.text)
 
 def clean_html(text):
@@ -362,76 +303,91 @@ def clean_html(text):
 # --- Main Application ---
 
 def main():
-    # パスワード認証チェック（ここより下は認証通過後のみ実行される）
     if not check_password():
         st.stop()
 
-    # Sidebar
     st.sidebar.title("🔬 PatentInsight AI")
-    st.sidebar.caption("Bulk Report Edition")
+    st.sidebar.caption("Speed & Bulk Edition")
     
-    # APIキーの取得 (Secrets または 環境変数から)
-    # UIには表示せず、バックグラウンドで安全に取得する
-    api_key = None
+    # --- API Key Loading Logic (Enhanced) ---
+    raw_api_keys = []
     
-    # 複数のキー名を許容する（ユーザーがGOOGLE_API_KEYなどと設定している場合に備えて）
-    possible_keys = ["API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"]
+    # 1. 探索: 環境変数から取得
+    candidate_keys = ["API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"]
+    for i in range(1, 11):
+        candidate_keys.append(f"API_KEY_{i}")
+        candidate_keys.append(f"GOOGLE_API_KEY_{i}")
     
-    # 1. 環境変数をチェック
-    for key in possible_keys:
-        val = os.environ.get(key)
-        if val:
-            api_key = val
-            break
-            
-    # 2. Secretsをチェック
-    if not api_key:
-        for key in possible_keys:
-            if key in st.secrets:
-                api_key = st.secrets[key]
-                break
+    for key_name in candidate_keys:
+        val = os.environ.get(key_name)
+        if val: raw_api_keys.append(val)
 
-    if not api_key:
+    # 2. 探索: Streamlit Secretsから賢く取得
+    # "API_KEYS" というリストがある場合
+    if "API_KEYS" in st.secrets:
+        val = st.secrets["API_KEYS"]
+        if isinstance(val, list):
+            raw_api_keys.extend(val)
+    
+    # 3. 探索: 全シークレットをスキャンして、値が "AIza" で始まるものをすべて拾う
+    # これにより、ユーザーがどんな変数名(例: MY_KEY_1)にしていても認識される
+    try:
+        for key, val in st.secrets.items():
+            # 値が文字列で、AIza(Google API Keyの接頭辞)で始まる場合
+            if isinstance(val, str) and val.strip().startswith("AIza"):
+                raw_api_keys.append(val)
+            # 値がリストの場合も中身をチェック
+            elif isinstance(val, list):
+                for v in val:
+                    if isinstance(v, str) and v.strip().startswith("AIza"):
+                        raw_api_keys.append(v)
+    except Exception:
+        pass # secretsアクセスでエラーが出ても無視
+
+    # 重複排除とクリーニング
+    valid_api_keys = []
+    seen = set()
+    for k in raw_api_keys:
+        k_clean = k.strip()
+        # プレースホルダーのテキストが入っている場合は除外
+        if k_clean and k_clean not in seen and k_clean.startswith("AIza") and "ここに" not in k_clean:
+            seen.add(k_clean)
+            valid_api_keys.append(k_clean)
+    
+    # --- Debug Information ---
+    if not valid_api_keys:
         st.sidebar.error("⛔ API Key Missing")
         st.error("⚠️ APIキーが見つかりません。")
-        st.markdown("""
-        **Secretsの設定を確認してください。**
         
-        1. **コメントアウト**: 行の先頭に `#` が付いていませんか？（`#`を消してください）
-        2. **変数名**: `API_KEY = "..."` という形式になっていますか？
-        3. **保存**: 入力後に「Save」ボタンを押しましたか？
-        
-        **正しい設定例:**
-        ```toml
-        APP_PASSWORD = "password123"
-        API_KEY = "AIzaSy..." 
-        ```
-        """)
+        # デバッグ用: どんなキー名が見えているかヒントを表示
+        st.info("💡 ヒント: 現在設定されているSecretsのキー名（値は隠しています）")
+        try:
+            secret_keys_found = list(st.secrets.keys())
+            if secret_keys_found:
+                st.code(str(secret_keys_found))
+                st.markdown("APIキーの値は通常 `AIza` で始まります。正しくコピーされているか確認してください。")
+            else:
+                st.warning("Secretsが空です。Streamlit Cloudの設定画面を確認してください。")
+        except:
+            st.warning("Secretsにアクセスできません。")
+            
         st.stop()
-        
-    client = Client(api_key=api_key)
+    
+    st.sidebar.success(f"🔑 {len(valid_api_keys)}個のAPIキーを認識")
+    
+    # Create clients for all keys
+    clients = [Client(api_key=k) for k in valid_api_keys]
 
     st.sidebar.markdown("---")
-    
     uploaded_file = st.sidebar.file_uploader("Excelファイルをアップロード", type=['xlsx', 'xls', 'xlsm'])
-    
-    focus_keywords = st.sidebar.text_area(
-        "着目テーマ・キーワード",
-        placeholder="例：全固体電池の硫化物系電解質における界面抵抗低減技術...",
-        height=100
-    )
-    
-    exclude_keywords = st.sidebar.text_area(
-        "除外・スキップ条件",
-        placeholder="例：半導体製造装置そのもの、リチウムイオン電池以外...",
-        height=80
-    )
+    focus_keywords = st.sidebar.text_area("着目テーマ・キーワード", height=100)
+    exclude_keywords = st.sidebar.text_area("除外・スキップ条件", height=80)
 
-    # Main Area
-    st.title("特許調査レポート生成")
-    st.markdown("""
-    Excelデータをアップロードすると、AIが内容を読み込み、技術動向や重要特許をまとめたレポートを作成します。
-    結果はOneNote等にそのまま貼り付け可能な形式で出力されます。
+    st.title("特許調査レポート生成 (Fast Mode)")
+    st.markdown(f"""
+    Excelデータをアップロードすると、AIが内容を分析してレポートを作成します。
+    **現在のモデル:** `{MODEL_NAME}` (高速・軽量版)
+    **並列処理:** 有効 (キー数: {len(clients)})
     """)
 
     if uploaded_file:
@@ -443,18 +399,14 @@ def main():
                 result_container = st.empty()
                 progress_bar = st.progress(0)
                 
-                # 非同期ジェネレータを同期的に回すためのラッパー
                 async def run_analysis():
                     final_html = ""
                     step = 0
-                    async for chunk in generate_final_report(client, df, focus_keywords, exclude_keywords):
+                    # 複数のクライアントを渡して実行
+                    async for chunk in generate_final_report(clients, df, focus_keywords, exclude_keywords):
                         step += 1
-                        # チャンクが短い場合はステータスメッセージとみなす
                         if len(chunk) < 200:
                             result_container.info(chunk)
-                            # 進捗バーを適当に進める
-                            current_progress = min(step * 10, 90)
-                            progress_bar.progress(current_progress)
                         else:
                             final_html = chunk
                     return final_html
@@ -462,46 +414,36 @@ def main():
                 html_content = asyncio.run(run_analysis())
                 
                 progress_bar.progress(100)
-                result_container.empty() # ステータス消去
+                result_container.empty()
                 
                 if html_content:
                     st.markdown("### 生成レポート")
-                    
-                    # HTMLの表示 (unsafe_allow_html=TrueでDOMに直接注入し、コピペしやすくする)
                     full_html = f"{REPORT_CSS}<div class='report-content'>{html_content}</div>"
                     st.markdown(full_html, unsafe_allow_html=True)
                     
-                    # コピー用ボタン（JavaScriptハック）
-                    # Streamlitはサーバーサイドのため、クライアントのクリップボード操作にはJSが必要
                     import streamlit.components.v1 as components
                     js_code = f"""
                     <script>
                     function copyReport() {{
                         const content = `{html_content.replace('`', '\`').replace('$', '\$')}`;
-                        // テキストとしてのコピーではなく、HTMLとしてのコピーが理想だが、
-                        // 簡易的にクリップボードAPIを使用
                         navigator.clipboard.writeText(content).then(function() {{
-                            alert('HTMLソースをコピーしました。OneNoteには「形式を選択して貼り付け」などを利用するか、ブラウザ上の表示を範囲選択してコピーしてください。');
+                            alert('コピー完了');
                         }}, function(err) {{
-                            console.error('Async: Could not copy text: ', err);
+                            console.error('Copy failed: ', err);
                         }});
                     }}
                     </script>
                     <div style="text-align: right; margin-top: 10px;">
-                        <button onclick="parent.document.execCommand('selectAll'); parent.document.execCommand('copy'); alert('レポート全体を選択・コピーしました。OneNoteに貼り付けてください。');" 
+                        <button onclick="parent.document.execCommand('selectAll'); parent.document.execCommand('copy'); alert('レポートをコピーしました。OneNoteに貼り付けてください。');" 
                         style="background-color: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold;">
                         📋 レポートを選択してコピー
                         </button>
-                        <p style="font-size: 12px; color: #64748b; margin-top: 5px;">
-                        ※ボタンを押すと全選択＆コピーを試みます。<br>うまくいかない場合は手動で範囲選択してコピーしてください。
-                        </p>
                     </div>
                     """
                     components.html(js_code, height=100)
 
         except Exception as e:
             st.error(f"エラーが発生しました: {str(e)}")
-            st.warning("Excelファイルの形式を確認してください（1行目がヘッダーである必要があります）。")
 
 if __name__ == "__main__":
     main()
